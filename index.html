@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vyomi Options Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #020617;
+  --card: #0f172a;
+  --border: #1e293b;
+  --muted: #64748b;
+  --text: #e2e8f0;
+  --subtext: #94a3b8;
+  --green: #4ade80;
+  --green-dim: #064e3b;
+  --blue: #60a5fa;
+  --blue-dim: #1e3a5f;
+  --yellow: #fbbf24;
+  --yellow-dim: #3d2e00;
+  --red: #f87171;
+  --red-dim: #3b1010;
+  --accent: #3b82f6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+.header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.logo-bar { width: 8px; height: 32px; background: var(--accent); border-radius: 4px; }
+.title { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+.subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--subtext);
+  margin-bottom: 16px;
+}
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 6px;
+}
+.status-dot.offline { background: var(--red); }
+
+.search-wrap { position: relative; margin-bottom: 24px; }
+.search-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+  font-family: inherit;
+}
+.search-input:focus { border-color: var(--accent); }
+.dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-top: 4px;
+  display: none;
+}
+.dropdown.open { display: block; }
+.dropdown-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dropdown-item:hover { background: var(--border); }
+.dropdown-item:last-child { border-bottom: none; }
+.tier-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #475569;
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state .text { font-size: 16px; }
+.empty-state .sub { font-size: 12px; margin-top: 6px; }
+
+.hero {
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid;
+}
+.hero-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.stock-name { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+.stock-date { font-size: 12px; color: var(--subtext); margin-top: 2px; }
+.stock-price { font-size: 28px; font-weight: 800; text-align: right; }
+.badges { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.badge {
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.hero-meta {
+  font-size: 12px;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.stats-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.stat-box {
+  background: var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 0;
+  flex: 1 1 0;
+  min-width: 110px;
+}
+.stat-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.stat-value { font-size: 18px; font-weight: 700; }
+.stat-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 14px;
+}
+.card-footnote {
+  font-size: 10px;
+  color: #475569;
+  margin-top: 8px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 700px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+.acc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.acc-label {
+  width: 36px;
+  font-size: 11px;
+  color: var(--subtext);
+  text-align: right;
+}
+.acc-bar {
+  flex: 1;
+  height: 18px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.acc-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.acc-text {
+  position: absolute;
+  right: 6px;
+  top: 1px;
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.range-row { margin-bottom: 10px; }
+.range-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--subtext);
+  margin-bottom: 4px;
+}
+.range-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  position: relative;
+}
+.range-dot {
+  position: absolute;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  background: var(--blue);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  border: 2px solid var(--card);
+}
+
+.strangle-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .strangle-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.strangle-cell {
+  background: var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.strangle-pct { font-weight: 700; font-size: 16px; }
+.strangle-strikes { color: var(--subtext); font-size: 10px; margin-top: 4px; }
+.strangle-acc { font-weight: 700; margin-top: 4px; }
+.strangle-label { color: #475569; font-size: 9px; }
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--subtext);
+  font-size: 14px;
+}
+.error-msg {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  color: var(--red);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="logo-bar"></div>
+    <div>
+      <div class="title">Vyomi Options Desk</div>
+      <div class="subtitle">ATR Engine + Max Pain Accuracy | 60 FNO Stocks</div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div>
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting...</span>
+    </div>
+    <div id="lastUpdated"></div>
+  </div>
+
+  <div id="errorContainer"></div>
+
+  <div class="search-wrap">
+    <input class="search-input" id="searchInput"
+           placeholder="Search stock... (e.g. JIOFIN, COALINDIA)" autocomplete="off" />
+    <div class="dropdown" id="dropdown"></div>
+  </div>
+
+  <div id="content">
+    <div class="empty-state">
+      <div class="icon">&#128270;</div>
+      <div class="text">Select a stock to view combined analysis</div>
+      <div class="sub">60 FNO stocks available</div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+// ============================================================
+// CONFIG - REPLACE THESE WITH YOUR SUPABASE PROJECT VALUES
+// ============================================================
+const SUPABASE_URL = 'https://qkzwsxiycpzjshhyjpbr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Id30Y5h6q6_C1_EjGRY9wg_SVpowrZQ';
+// ============================================================
+
+const { createClient } = window.supabase;
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const BANDS = ["1%", "2%", "3%", "4%", "5%", "6%", "8%", "10%", "12%", "15%"];
+const BAND_VALUES = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15];
+
+const tierConfig = {
+  AAA: { bg: "#064e3b", text: "#34d399", label: "Prime",     icon: "\u2605", zone: "Enter any date" },
+  AA:  { bg: "#1e3a5f", text: "#60a5fa", label: "Strong",    icon: "\u2713", zone: "Enter 10th+" },
+  A:   { bg: "#1a3a1a", text: "#4ade80", label: "Good",      icon: "\u25a0", zone: "Enter 15th+" },
+  B:   { bg: "#3d2e00", text: "#fbbf24", label: "Caution",   icon: "\u25a0", zone: "Enter 20th only" },
+  C:   { bg: "#3b1010", text: "#f87171", label: "Skip",      icon: "\u2717", zone: "Below threshold" },
+};
+const trendColors = { UP: "#4ade80", DOWN: "#f87171", SIDEWAYS: "#94a3b8" };
+const strengthColors = { STRONG: "#4ade80", WEAK: "#f87171" };
+
+let atrData = [];
+let mpData = [];
+let selectedStock = null;
+
+async function loadData() {
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const errorContainer = document.getElementById('errorContainer');
+
+  try {
+    const [atrRes, mpRes] = await Promise.all([
+      supabase.from('atr_engine').select('*'),
+      supabase.from('max_pain_accuracy').select('*')
+    ]);
+
+    if (atrRes.error) throw atrRes.error;
+    if (mpRes.error) throw mpRes.error;
+
+    atrData = atrRes.data || [];
+    mpData = mpRes.data || [];
+
+    statusDot.classList.remove('offline');
+    statusText.textContent = `Live \u00B7 ${atrData.length} stocks loaded`;
+
+    if (atrData.length > 0 && atrData[0].last_date) {
+      document.getElementById('lastUpdated').textContent = `Data: ${atrData[0].last_date}`;
+    }
+  } catch (err) {
+    console.error('Load error', err);
+    statusDot.classList.add('offline');
+    statusText.textContent = 'Connection failed';
+    errorContainer.innerHTML = `<div class="error-msg">Could not load data from Supabase. Check your URL and API key in the script. Error: ${err.message || err}</div>`;
+  }
+}
+
+function tierBadge(tier) {
+  const c = tierConfig[tier];
+  if (!c) return '';
+  return `<span class="tier-badge" style="background:${c.bg};color:${c.text}">${tier}</span>`;
+}
+
+function setupSearch() {
+  const input = document.getElementById('searchInput');
+  const dropdown = document.getElementById('dropdown');
+
+  function renderDropdown(query) {
+    const stocks = atrData.map(a => a.stock).sort();
+    const filtered = query ? stocks.filter(s => s.toLowerCase().includes(query.toLowerCase())) : stocks;
+    dropdown.innerHTML = filtered.map(s => {
+      const mp = mpData.find(m => m.stock === s);
+      return `<div class="dropdown-item" data-stock="${s}">
+        <span>${s}</span>
+        ${mp ? tierBadge(mp.tier) : ''}
+      </div>`;
+    }).join('');
+    dropdown.classList.toggle('open', filtered.length > 0);
+
+    dropdown.querySelectorAll('.dropdown-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const s = el.getAttribute('data-stock');
+        input.value = s;
+        dropdown.classList.remove('open');
+        selectStock(s);
+      });
+    });
+  }
+
+  input.addEventListener('input', e => renderDropdown(e.target.value));
+  input.addEventListener('focus', () => renderDropdown(input.value));
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) dropdown.classList.remove('open');
+  });
+}
+
+function selectStock(symbol) {
+  selectedStock = symbol;
+  const atr = atrData.find(a => a.stock === symbol);
+  const mp = mpData.find(m => m.stock === symbol);
+  if (!atr || !mp) {
+    document.getElementById('content').innerHTML =
+      `<div class="error-msg">Data not found for ${symbol}</div>`;
+    return;
+  }
+  render(atr, mp);
+}
+
+function render(atr, mp) {
+  const tc = tierConfig[mp.tier] || tierConfig.C;
+  const accArr = [mp.acc_1, mp.acc_2, mp.acc_3, mp.acc_4, mp.acc_5,
+                  mp.acc_6, mp.acc_8, mp.acc_10, mp.acc_12, mp.acc_15];
+
+  // Hero
+  let html = `
+    <div class="hero" style="background:${tc.bg};border-color:${tc.text}33">
+      <div class="hero-row">
+        <div>
+          <div class="stock-name">${atr.stock}</div>
+          <div class="stock-date">Data as of ${atr.last_date}</div>
+        </div>
+        <div>
+          <div class="stock-price">&#8377;${Number(atr.last_close).toLocaleString('en-IN')}</div>
+          <div class="badges">
+            <span class="badge" style="background:${tc.bg};border:1px solid ${tc.text};color:${tc.text}">
+              ${tc.icon} ${mp.tier} \u2014 ${tc.label}
+            </span>
+            <span class="badge" style="background:#1e293b;color:${trendColors[atr.trend]}">
+              ${atr.trend === 'UP' ? '\u2191' : atr.trend === 'DOWN' ? '\u2193' : '\u2194'} ${atr.trend}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-meta" style="color:${tc.text}">
+        Trade Zone: ${tc.zone} | MP Drift: ${mp.mp_drift}% | n = ${mp.n} expiries
+      </div>
+    </div>
+  `;
+
+  // Quick stats
+  const above20 = atr.last_close > atr.sma20;
+  const above50 = atr.last_close > atr.sma50;
+  html += `
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-label">ATR (14)</div>
+        <div class="stat-value">${atr.atr_14}</div>
+        <div class="stat-sub">${atr.atr_pct_of_price}% of price</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">SMA 20</div>
+        <div class="stat-value" style="color:${above20 ? 'var(--green)' : 'var(--red)'}">
+          ${Number(atr.sma20).toLocaleString('en-IN')}
+        </div>
+        <div class="stat-sub">${above20 ? 'Price above' : 'Price below'}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">SMA 50</div>
+        <div class="stat-value" style="color:${above50 ? 'var(--green)' : 'var(--red)'}">
+          ${Number(atr.sma50).toLocaleString('en-IN')}
+        </div>
+        <div class="stat-sub">${above50 ? 'Price above' : 'Price below'}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Support</div>
+        <div class="stat-value" style="color:${strengthColors[atr.support_strength]}">
+          ${atr.support_strength}
+        </div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Resistance</div>
+        <div class="stat-value" style="color:${strengthColors[atr.resistance_strength]}">
+          ${atr.resistance_strength}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Two-column grid
+  html += '<div class="grid-2">';
+
+  // Max Pain Accuracy
+  html += '<div class="card"><div class="card-title">Max Pain Accuracy (% bands from MP on 10th)</div>';
+  BANDS.forEach((b, i) => {
+    const v = accArr[i] || 0;
+    const color = v >= 80 ? 'var(--green)' : v >= 60 ? 'var(--yellow)' : 'var(--red)';
+    html += `
+      <div class="acc-row">
+        <span class="acc-label">${b}</span>
+        <div class="acc-bar">
+          <div class="acc-fill" style="width:${v}%;background:${color}"></div>
+          <span class="acc-text">${v}%</span>
+        </div>
+      </div>
+    `;
+  });
+  html += '<div class="card-footnote">Green \u2265 80% | Yellow \u2265 60% | Red &lt; 60% \u2014 pick a green band for your strangle width</div></div>';
+
+  // Price Ranges
+  html += '<div class="card"><div class="card-title">Price Range Analysis (Support / Resistance Zones)</div>';
+  const ranges = [
+    ['30-Day Range', atr.low_30d, atr.high_30d],
+    ['60-Day Range', atr.low_60d, atr.high_60d],
+    ['90-Day Range', atr.low_90d, atr.high_90d],
+    ['120-Day Range', atr.low_120d, atr.high_120d],
+  ];
+  if (atr.high_52w && atr.low_52w) {
+    ranges.push(['52-Week Range', atr.low_52w, atr.high_52w]);
+  }
+  ranges.forEach(([label, low, high]) => {
+    const pct = high !== low ? ((atr.last_close - low) / (high - low)) * 100 : 50;
+    const clamped = Math.max(0, Math.min(100, pct));
+    html += `
+      <div class="range-row">
+        <div class="range-header">
+          <span>${label}</span>
+          <span>${Number(low).toLocaleString('en-IN')} \u2014 ${Number(high).toLocaleString('en-IN')}</span>
+        </div>
+        <div class="range-bar">
+          <div class="range-dot" style="left:${clamped}%"></div>
+        </div>
+      </div>
+    `;
+  });
+  html += '<div class="card-footnote">Blue dot = current price position within range</div></div>';
+  html += '</div>';
+
+  // Strangle Calculator
+  html += `
+    <div class="card">
+      <div class="card-title">Quick Strangle Reference \u2014 ${atr.stock} at &#8377;${Number(atr.last_close).toLocaleString('en-IN')}</div>
+      <div class="strangle-grid">
+  `;
+  [3, 4, 5, 6, 8].forEach(pct => {
+    const pts = Math.round(atr.last_close * pct / 100);
+    const pe = Math.round(atr.last_close - pts);
+    const ce = Math.round(atr.last_close + pts);
+    const acc = accArr[BAND_VALUES.indexOf(pct)] || 0;
+    const accColor = acc >= 80 ? 'var(--green)' : acc >= 60 ? 'var(--yellow)' : 'var(--red)';
+    html += `
+      <div class="strangle-cell">
+        <div class="strangle-pct" style="color:${accColor}">\u00B1${pct}%</div>
+        <div class="strangle-strikes">PE: &#8377;${pe}</div>
+        <div class="strangle-strikes">CE: &#8377;${ce}</div>
+        <div class="strangle-acc" style="color:${accColor}">${acc}%</div>
+        <div class="strangle-label">accuracy</div>
+      </div>
+    `;
+  });
+  html += `
+      </div>
+      <div class="card-footnote">PE/CE strikes shown are approximate (based on last close, not live Max Pain). Check TradePulse for current MP before placing.</div>
+    </div>
+  `;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+// Init
+loadData().then(setupSearch);
+</script>
+
+</body>
+</html>
