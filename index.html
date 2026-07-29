@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -354,6 +355,7 @@ const strengthColors = { STRONG: "#4ade80", WEAK: "#f87171" };
 
 let atrData = [];
 let mpData = [];
+let brData = [];
 let selectedStock = null;
 
 async function loadData() {
@@ -362,16 +364,19 @@ async function loadData() {
   const errorContainer = document.getElementById('errorContainer');
 
   try {
-    const [atrRes, mpRes] = await Promise.all([
+    const [atrRes, mpRes, brRes] = await Promise.all([
       supabase.from('atr_engine').select('*'),
-      supabase.from('max_pain_accuracy').select('*')
+      supabase.from('max_pain_accuracy').select('*'),
+      supabase.from('breach_recovery_split').select('*')
     ]);
 
     if (atrRes.error) throw atrRes.error;
     if (mpRes.error) throw mpRes.error;
+    if (brRes.error) throw brRes.error;
 
     atrData = atrRes.data || [];
     mpData = mpRes.data || [];
+    brData = brRes.data || [];
 
     statusDot.classList.remove('offline');
     statusText.textContent = `Live \u00B7 ${atrData.length} stocks loaded`;
@@ -430,15 +435,16 @@ function selectStock(symbol) {
   selectedStock = symbol;
   const atr = atrData.find(a => a.stock === symbol);
   const mp = mpData.find(m => m.stock === symbol);
+  const br = brData.find(b => b.stock === symbol);
   if (!atr || !mp) {
     document.getElementById('content').innerHTML =
       `<div class="error-msg">Data not found for ${symbol}</div>`;
     return;
   }
-  render(atr, mp);
+  render(atr, mp, br);
 }
 
-function render(atr, mp) {
+function render(atr, mp, br) {
   const tc = tierConfig[mp.tier] || tierConfig.C;
   const accArr = [mp.acc_1, mp.acc_2, mp.acc_3, mp.acc_4, mp.acc_5,
                   mp.acc_6, mp.acc_8, mp.acc_10, mp.acc_12, mp.acc_15];
@@ -585,7 +591,200 @@ function render(atr, mp) {
     </div>
   `;
 
+  // Breach / Recovery panel
+  if (br) {
+    const upColor = br.upside_recovery_pct == null ? 'var(--muted)' :
+      br.upside_recovery_pct >= 70 ? 'var(--green)' :
+      br.upside_recovery_pct >= 45 ? 'var(--yellow)' : 'var(--red)';
+    const downColor = br.downside_recovery_pct == null ? 'var(--muted)' :
+      br.downside_recovery_pct >= 70 ? 'var(--green)' :
+      br.downside_recovery_pct >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+    html += `
+      <div class="card">
+        <div class="card-title">Breach &amp; Recovery — When ${atr.stock} Spikes Away From MP, Does It Come Back?</div>
+        <div class="grid-2">
+          <div>
+            <div style="font-size:12px;color:var(--subtext);margin-bottom:8px;font-weight:700">
+              &#8593; UPSIDE (relevant if you're short a CE)
+            </div>
+            <div style="font-size:28px;font-weight:800;color:${upColor}">
+              ${br.upside_recovery_pct != null ? br.upside_recovery_pct + '%' : 'N/A'}
+            </div>
+            <div style="font-size:11px;color:var(--subtext);margin-bottom:6px">
+              ${br.upside_reverted}/${br.upside_breaches} breaches reverted
+            </div>
+            <div style="font-size:11px;font-weight:700;color:${upColor}">${br.upside_tag}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--subtext);margin-bottom:8px;font-weight:700">
+              &#8595; DOWNSIDE (relevant if you're short a PE)
+            </div>
+            <div style="font-size:28px;font-weight:800;color:${downColor}">
+              ${br.downside_recovery_pct != null ? br.downside_recovery_pct + '%' : 'N/A'}
+            </div>
+            <div style="font-size:11px;color:var(--subtext);margin-bottom:6px">
+              ${br.downside_reverted}/${br.downside_breaches} breaches reverted
+            </div>
+            <div style="font-size:11px;font-weight:700;color:${downColor}">${br.downside_tag}</div>
+          </div>
+        </div>
+        <div class="card-footnote">
+          A "breach" = price moved 8%+ away from Max Pain (10th) at some point mid-cycle.
+          "Reverted" = final expiry close still landed within 5% of that MP. Based on ${br.total_cycles} past cycles —
+          samples under ~10 breaches are directional, not statistically firm.
+        </div>
+      </div>
+    `;
+  }
+
   document.getElementById('content').innerHTML = html;
+
+  // Position Defense / Roll Advisor - wire up after HTML is in the DOM
+  setupRollAdvisor(atr, mp, br);
+}
+
+function setupRollAdvisor(atr, mp, br) {
+  const accArr = [mp.acc_1, mp.acc_2, mp.acc_3, mp.acc_4, mp.acc_5,
+                  mp.acc_6, mp.acc_8, mp.acc_10, mp.acc_12, mp.acc_15];
+
+  const container = document.createElement('div');
+  container.className = 'card';
+  container.innerHTML = `
+    <div class="card-title">Position Defense — Should You Roll?</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:11px;color:var(--subtext);margin-bottom:4px">Live Max Pain (from TradePulse)</div>
+        <input id="liveMpInput" type="number" placeholder="e.g. 1360"
+          style="width:100%;padding:10px;background:var(--border);border:1px solid var(--muted);border-radius:6px;color:var(--text);font-size:14px" />
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:11px;color:var(--subtext);margin-bottom:4px">Your PE Strike</div>
+        <input id="peStrikeInput" type="number" placeholder="e.g. 1240"
+          style="width:100%;padding:10px;background:var(--border);border:1px solid var(--muted);border-radius:6px;color:var(--text);font-size:14px" />
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:11px;color:var(--subtext);margin-bottom:4px">Your CE Strike</div>
+        <input id="ceStrikeInput" type="number" placeholder="e.g. 1420"
+          style="width:100%;padding:10px;background:var(--border);border:1px solid var(--muted);border-radius:6px;color:var(--text);font-size:14px" />
+      </div>
+    </div>
+    <button id="checkPositionBtn" style="width:100%;padding:12px;background:var(--accent);border:none;border-radius:8px;color:white;font-size:14px;font-weight:700;cursor:pointer">
+      Check My Position
+    </button>
+    <div id="rollAdvisorOutput" style="margin-top:14px"></div>
+  `;
+  document.getElementById('content').appendChild(container);
+
+  document.getElementById('checkPositionBtn').addEventListener('click', () => {
+    const liveMp = parseFloat(document.getElementById('liveMpInput').value);
+    const peStrike = parseFloat(document.getElementById('peStrikeInput').value);
+    const ceStrike = parseFloat(document.getElementById('ceStrikeInput').value);
+    const cmp = atr.last_close;
+
+    if (!liveMp || (!peStrike && !ceStrike)) {
+      document.getElementById('rollAdvisorOutput').innerHTML =
+        `<div class="error-msg">Enter at least the live Max Pain and one strike.</div>`;
+      return;
+    }
+
+    let outputHtml = '';
+
+    // Distance of CMP from live MP, and which direction is threatened
+    const distFromMp = ((cmp - liveMp) / liveMp) * 100;
+    const isUpsideThreat = distFromMp > 0;
+    const isBreach = Math.abs(distFromMp) >= 8;
+
+    outputHtml += `
+      <div style="background:var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-size:12px;color:var(--subtext)">CMP vs Live MP</div>
+        <div style="font-size:18px;font-weight:700;color:${isBreach ? 'var(--red)' : 'var(--green)'}">
+          ${distFromMp >= 0 ? '+' : ''}${distFromMp.toFixed(1)}% ${isUpsideThreat ? '(above MP)' : '(below MP)'}
+          ${isBreach ? ' — 8%+ BREACH ZONE' : ''}
+        </div>
+      </div>
+    `;
+
+    // Pull relevant recovery tag based on threatened direction
+    if (br) {
+      const relevantTag = isUpsideThreat ? br.upside_tag : br.downside_tag;
+      const relevantRate = isUpsideThreat ? br.upside_recovery_pct : br.downside_recovery_pct;
+      const relevantBreaches = isUpsideThreat ? br.upside_breaches : br.downside_breaches;
+      const tagColor = relevantRate == null ? 'var(--muted)' :
+        relevantRate >= 70 ? 'var(--green)' : relevantRate >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+      outputHtml += `
+        <div style="background:var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+          <div style="font-size:12px;color:var(--subtext)">
+            Historical ${isUpsideThreat ? 'Upside' : 'Downside'} Recovery for ${atr.stock}
+          </div>
+          <div style="font-size:18px;font-weight:700;color:${tagColor}">
+            ${relevantRate != null ? relevantRate + '%' : 'N/A'} — ${relevantTag}
+          </div>
+          <div style="font-size:11px;color:var(--subtext);margin-top:4px">
+            Based on ${relevantBreaches} past ${isUpsideThreat ? 'upside' : 'downside'} breach(es) of 8%+ from MP
+          </div>
+        </div>
+      `;
+    }
+
+    // Recalculate accuracy bands centered on LIVE MP (not last close)
+    outputHtml += `<div style="font-size:12px;color:var(--subtext);font-weight:700;margin-bottom:8px">
+      Accuracy Bands From TODAY'S Live MP (${liveMp})
+    </div>`;
+
+    const bandPcts = [3, 4, 5, 6, 8, 10];
+    let bestGreenBand = null;
+
+    bandPcts.forEach(pct => {
+      const idx = BAND_VALUES.indexOf(pct);
+      const acc = accArr[idx] || 0;
+      const pe = Math.round(liveMp * (1 - pct / 100));
+      const ce = Math.round(liveMp * (1 + pct / 100));
+      const color = acc >= 80 ? 'var(--green)' : acc >= 60 ? 'var(--yellow)' : 'var(--red)';
+      if (acc >= 80 && bestGreenBand === null) bestGreenBand = { pct, pe, ce };
+
+      outputHtml += `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--border);border-radius:6px;margin-bottom:6px;font-size:13px">
+          <span>&#177;${pct}% &rarr; PE ${pe} / CE ${ce}</span>
+          <span style="font-weight:700;color:${color}">${acc}%</span>
+        </div>
+      `;
+    });
+
+    // Roll suggestion
+    outputHtml += `<div style="margin-top:12px;padding:14px;border-radius:8px;background:${isBreach ? 'var(--red-dim)' : 'var(--green-dim)'};border:1px solid ${isBreach ? 'var(--red)' : 'var(--green)'}">`;
+
+    if (!isBreach) {
+      outputHtml += `<div style="color:var(--green);font-weight:700;font-size:14px">
+        &#10003; No breach yet (${Math.abs(distFromMp).toFixed(1)}% from MP). Current strikes likely still fine — recheck if price moves further.
+      </div>`;
+    } else if (bestGreenBand) {
+      const threatenedStrike = isUpsideThreat ? ceStrike : peStrike;
+      const suggestedStrike = isUpsideThreat ? bestGreenBand.ce : bestGreenBand.pe;
+      outputHtml += `
+        <div style="color:var(--red);font-weight:700;font-size:14px;margin-bottom:6px">
+          &#9888; Breach zone. Your ${isUpsideThreat ? 'CE' : 'PE'} strike (${threatenedStrike || 'not entered'}) is threatened.
+        </div>
+        <div style="color:var(--text);font-size:13px">
+          Consider rolling to <strong>${suggestedStrike}</strong> (±${bestGreenBand.pct}% from live MP —
+          the nearest band with ≥80% historical accuracy for ${atr.stock}).
+        </div>
+      `;
+    } else {
+      outputHtml += `<div style="color:var(--red);font-weight:700;font-size:14px">
+        &#9888; Breach zone, and no band currently shows ≥80% accuracy for ${atr.stock}. This stock's pinning
+        is historically weak — use the Breach/Recovery tag above and your own judgment rather than relying on a suggested strike.
+      </div>`;
+    }
+    outputHtml += `</div>`;
+    outputHtml += `<div class="card-footnote" style="margin-top:8px">
+      This tool re-centers your existing historical accuracy data around the LIVE Max Pain you entered — it does not
+      predict future price movement. Always cross-check with TradePulse before acting.
+    </div>`;
+
+    document.getElementById('rollAdvisorOutput').innerHTML = outputHtml;
+  });
 }
 
 // Init
